@@ -40,8 +40,10 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <unistd.h>
 #include <ctype.h>
 #include <limits.h>
+
 
 #if defined(IMRAA)
 #include <json-c/json.h>
@@ -59,14 +61,14 @@
 #include "spi.h"
 #include "uart.h"
 
-
 #define IIO_DEVICE_WILDCARD "iio:device*"
+
+
 mraa_board_t* plat = NULL;
 mraa_iio_info_t* plat_iio = NULL;
 mraa_lang_func_t* lang_func = NULL;
 
-static char* platform_name = NULL;
-static char* platform_long_name = NULL;
+char* platform_name = NULL;
 
 static int num_i2c_devices = 0;
 static int num_iio_devices = 0;
@@ -99,7 +101,9 @@ imraa_init()
     if (plat != NULL) {
         return MRAA_SUCCESS;
     }
-
+    char* env_var;
+    mraa_result_t ret;
+    mraa_platform_t platform_type = MRAA_NULL_PLATFORM;
     uid_t proc_euid = geteuid();
     struct passwd* proc_user = getpwuid(proc_euid);
 
@@ -113,19 +117,34 @@ imraa_init()
     syslog(LOG_NOTICE, "libmraa version %s initialised by user '%s' with EUID %d",
            mraa_get_version(), (proc_user != NULL) ? proc_user->pw_name : "<unknown>", proc_euid);
 
-    mraa_platform_t platform_type;
+    // Check to see if the enviroment variable has been set
+    env_var = getenv(MRAA_JSONPLAT_ENV_VAR);
+    if (env_var != NULL) {
+        // We only care about success, the init will write to syslog if things went wrong
+        switch ((ret = mraa_init_json_platform(env_var))) {
+            case MRAA_SUCCESS:
+                platform_type = plat->platform_type;
+                break;
+            default:
+                syslog(LOG_NOTICE, "libmraa was unable to initialise a platform from json");
+        }
+    }
+
+    // Not an else because if the env var didn't load what we wanted maybe we can still load something
+    if (platform_type == MRAA_NULL_PLATFORM) {
 #if defined(X86PLAT)
-    // Use runtime x86 platform detection
-    platform_type = mraa_x86_platform();
+        // Use runtime x86 platform detection
+        platform_type = mraa_x86_platform();
 #elif defined(ARMPLAT)
-    // Use runtime ARM platform detection
-    platform_type = mraa_arm_platform();
+        // Use runtime ARM platform detection
+        platform_type = mraa_arm_platform();
 #elif defined(MOCKPLAT)
-    // Use mock platform
-    platform_type = mraa_mock_platform();
+        // Use mock platform
+        platform_type = mraa_mock_platform();
 #else
 #error mraa_ARCH NOTHING
 #endif
+    }
 
     if (plat != NULL) {
         plat->platform_type = platform_type;
@@ -206,6 +225,7 @@ mraa_init()
 void
 mraa_deinit()
 {
+    int i = 0;
     if (plat != NULL) {
         if (plat->pins != NULL) {
             free(plat->pins);
@@ -217,6 +237,19 @@ mraa_deinit()
             }
             free(sub_plat);
         }
+#if defined(JSONPLAT)
+        if (plat->platform_type == MRAA_JSON_PLATFORM) {
+            // Free the platform name
+            free(plat->platform_name);
+
+            // Free the UART device path
+            for (i = 0; i < plat->uart_dev_count; i++) {
+                if (plat->uart_dev[i].device_path != NULL) {
+                    free(plat->uart_dev[i].device_path);
+                }
+            }
+        }
+#endif
         free(plat);
 
     }
@@ -546,35 +579,35 @@ mraa_pin_mode_test(int pin, mraa_pinmodes_t mode)
 
     switch (mode) {
         case MRAA_PIN_VALID:
-            if (current_plat->pins[pin].capabilites.valid == 1)
+            if (current_plat->pins[pin].capabilities.valid == 1)
                 return 1;
             break;
         case MRAA_PIN_GPIO:
-            if (current_plat->pins[pin].capabilites.gpio == 1)
+            if (current_plat->pins[pin].capabilities.gpio == 1)
                 return 1;
             break;
         case MRAA_PIN_PWM:
-            if (current_plat->pins[pin].capabilites.pwm == 1)
+            if (current_plat->pins[pin].capabilities.pwm == 1)
                 return 1;
             break;
         case MRAA_PIN_FAST_GPIO:
-            if (current_plat->pins[pin].capabilites.fast_gpio == 1)
+            if (current_plat->pins[pin].capabilities.fast_gpio == 1)
                 return 1;
             break;
         case MRAA_PIN_SPI:
-            if (current_plat->pins[pin].capabilites.spi == 1)
+            if (current_plat->pins[pin].capabilities.spi == 1)
                 return 1;
             break;
         case MRAA_PIN_I2C:
-            if (current_plat->pins[pin].capabilites.i2c == 1)
+            if (current_plat->pins[pin].capabilities.i2c == 1)
                 return 1;
             break;
         case MRAA_PIN_AIO:
-            if (current_plat->pins[pin].capabilites.aio == 1)
+            if (current_plat->pins[pin].capabilities.aio == 1)
                 return 1;
             break;
         case MRAA_PIN_UART:
-            if (current_plat->pins[pin].capabilites.uart == 1)
+            if (current_plat->pins[pin].capabilities.uart == 1)
                 return 1;
             break;
         default:
@@ -919,7 +952,7 @@ mraa_find_i2c_bus(const char* devname, int startfrom)
     // i2c devices are numbered numerically so 0 must exist otherwise there is
     // no i2c-dev loaded
     if (mraa_file_exist("/sys/class/i2c-dev/i2c-0")) {
-        for (i; i < num_i2c_devices; i++) {
+        for (;i < num_i2c_devices; i++) {
             off_t size, err;
             snprintf(path, 64, "/sys/class/i2c-dev/i2c-%u/name", i);
             fd = open(path, O_RDONLY);
@@ -1176,7 +1209,7 @@ mraa_init_io(const char* desc)
         return NULL;
     }
 
-    if (strncmp(type, "GPIO", 4) == 0) {
+    if (strncmp(type, GPIO_KEY, strlen(GPIO_KEY)) == 0) {
         if (raw) {
             if (mraa_init_io_helper(&str, &pin, delim) == MRAA_SUCCESS) {
                 return (void*) mraa_gpio_init_raw(pin);
@@ -1185,7 +1218,7 @@ mraa_init_io(const char* desc)
             return NULL;
         }
         return (void*) mraa_gpio_init(pin);
-    } else if (strncmp(type, "I2C", 3) == 0) {
+    } else if (strncmp(type, I2C_KEY, strlen(I2C_KEY)) == 0) {
         if (raw) {
             if (mraa_init_io_helper(&str, &pin, delim) == MRAA_SUCCESS) {
                 return (void*) mraa_i2c_init_raw(pin);
@@ -1194,13 +1227,13 @@ mraa_init_io(const char* desc)
             return NULL;
         }
         return (void*) mraa_i2c_init(pin);
-    } else if (strncmp(type, "AIO", 3) == 0) {
+    } else if (strncmp(type, AIO_KEY, strlen(AIO_KEY)) == 0) {
         if (raw) {
             syslog(LOG_ERR, "mraa_init_io: Aio doesn't have a RAW mode");
             return NULL;
         }
         return (void*) mraa_aio_init(pin);
-    } else if (strncmp(type, "PWM", 3) == 0) {
+    } else if (strncmp(type, PWM_KEY, strlen(PWM_KEY)) == 0) {
         if (raw) {
             if (mraa_init_io_helper(&str, &id, delim) != MRAA_SUCCESS) {
                 syslog(LOG_ERR, "mraa_init_io: Pwm, unable to convert the chip id string into a useable Int");
@@ -1213,7 +1246,7 @@ mraa_init_io(const char* desc)
             return (void*) mraa_pwm_init_raw(id, pin);
         }
         return (void*) mraa_pwm_init(pin);
-    } else if (strncmp(type, "SPI", 3) == 0) {
+    } else if (strncmp(type, SPI_KEY, strlen(SPI_KEY)) == 0) {
         if (raw) {
             if (mraa_init_io_helper(&str, &id, delim) != MRAA_SUCCESS) {
                 syslog(LOG_ERR, "mraa_init_io: Spi, unable to convert the bus string into a useable Int");
@@ -1226,7 +1259,7 @@ mraa_init_io(const char* desc)
             return (void*) mraa_spi_init_raw(id, pin);
         }
         return (void*) mraa_spi_init(pin);
-    } else if (strncmp(type, "UART", 4) == 0) {
+    } else if (strncmp(type, UART_KEY, strlen(UART_KEY)) == 0) {
         if (raw) {
             return (void*) mraa_uart_init_raw(str);
         }
@@ -1235,3 +1268,12 @@ mraa_init_io(const char* desc)
     syslog(LOG_ERR, "mraa_init_io: Invalid IO type given.");
     return NULL;
 }
+
+
+#ifndef JSONPLAT
+mraa_result_t
+mraa_init_json_platform(const char* desc)
+{
+    return MRAA_ERROR_FEATURE_NOT_SUPPORTED;
+}
+#endif

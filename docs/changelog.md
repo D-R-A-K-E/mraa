@@ -5,6 +5,28 @@ This changelog is meant as a quick & rough guide to what has changed between
 versions. The API is now fairly stable but when new calls/features are added
 they are listed here. Anything pre 0.2.x is ignored.
 
+**1.3.0**
+  * Fix GT GPIO bugs
+  * Mock SPI and travis now uses mock and tests it
+  * RPI zero support
+
+**1.2.3**
+  * Revert 1.2.1 binding.gyp changed that had side effect of enabling JSONPLAT in mraa.c
+  * improve travis.ci to load mraa.node as compiled from make npmpkg target
+
+**1.2.2**
+  * remove jsonplat from prehashed npm builds (see docs/npm.md for details)
+  * internal spelling fix
+
+**1.2.1**
+  * Fix npm pkg build - no other fix
+
+**1.2.0**
+  * JSON platform support
+  * mock I2c functionality
+  * Intel Grosse Tete PWM fix
+  * AIO firmata bug fix
+
 **1.1.2**
   * Mock platform support
   * mraa-i2c treats i2c buses by default as linux

@@ -233,7 +233,7 @@ mraa_pwm_init(int pin)
         syslog(LOG_ERR, "pwm_init: pin %i beyond platform definition", pin);
         return NULL;
     }
-    if (board->pins[pin].capabilites.pwm != 1) {
+    if (board->pins[pin].capabilities.pwm != 1) {
         syslog(LOG_ERR, "pwm_init: pin %i not capable of pwm", pin);
         return NULL;
     }
@@ -247,28 +247,6 @@ mraa_pwm_init(int pin)
     if (board->adv_func->pwm_init_pre != NULL) {
         if (board->adv_func->pwm_init_pre(pin) != MRAA_SUCCESS)
             return NULL;
-    }
-
-    if (board->pins[pin].capabilites.gpio == 1) {
-        // This deserves more investigation
-        mraa_gpio_context mux_i;
-        mux_i = mraa_gpio_init_raw(board->pins[pin].gpio.pinmap);
-        if (mux_i == NULL) {
-            syslog(LOG_ERR, "pwm_init: error in gpio->pwm%i transition. gpio_init", pin);
-            return NULL;
-        }
-        if (mraa_gpio_dir(mux_i, MRAA_GPIO_OUT) != MRAA_SUCCESS) {
-            syslog(LOG_ERR, "pwm_init: error in gpio->pwm%i transition. gpio_dir", pin);
-            return NULL;
-        }
-        if (mraa_gpio_write(mux_i, 1) != MRAA_SUCCESS) {
-            syslog(LOG_ERR, "pwm_init: error in gpio->pwm%i transition. gpio_write", pin);
-            return NULL;
-        }
-        if (mraa_gpio_close(mux_i) != MRAA_SUCCESS) {
-            syslog(LOG_ERR, "pwm_init: error in gpio->pwm%i transition. gpio_close", pin);
-            return NULL;
-        }
     }
 
     if (board->pins[pin].pwm.mux_total > 0) {
