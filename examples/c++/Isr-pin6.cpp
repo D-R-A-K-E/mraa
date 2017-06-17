@@ -1,5 +1,6 @@
 /*
  * Author: Brendan Le Foll
+ * Contributors: Alex Tereschenko <alext.mkrs@gmail.com>
  * Copyright (c) 2015 Intel Corporation.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
@@ -44,7 +45,8 @@ main()
 
     x->isr(mraa::EDGE_BOTH, &interrupt, NULL);
 
-    for (;;) {
+    int i = 100;
+    for (; i > 0; --i) {
         if (counter != oldcounter) {
             fprintf(stdout, "timeout counter == %d\n", counter);
             oldcounter = counter;
@@ -53,5 +55,6 @@ main()
         sleep(1);
     }
 
-    return EXIT_SUCCESS;
+    delete x;
+    return MRAA_SUCCESS;
 }

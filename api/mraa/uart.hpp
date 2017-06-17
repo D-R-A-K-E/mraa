@@ -124,7 +124,7 @@ class Uart
     }
 
     /**
-     * Write bytes in String object to a device
+     * Write bytes in char* buffer to a device
      *
      * @param data buffer pointer
      * @param length maximum size of buffer
@@ -198,6 +198,21 @@ class Uart
     }
 
     /**
+     * Send a break to the device.
+     * Blocks until complete.
+     *
+     * @param duration When 0, send a break lasting at least 250
+     * milliseconds, and not more than 500 milliseconds.  When non zero,
+     * the break duration is implementation specific.
+     * @return Result of operation
+     */
+    Result
+    sendBreak(int duration)
+    {
+        return (Result) mraa_uart_sendbreak(m_uart, duration);
+    }
+
+    /**
      * Set the baudrate.
      * Takes an int and will attempt to decide what baudrate  is
      * to be used on the UART hardware.
@@ -263,7 +278,7 @@ class Uart
      * @return Result of operation
      */
     Result
-    SetNonBlocking(bool nonblock)
+    setNonBlocking(bool nonblock)
     {
         return (Result) mraa_uart_set_non_blocking(m_uart, nonblock);
     }

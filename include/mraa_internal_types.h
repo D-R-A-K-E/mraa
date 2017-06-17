@@ -25,15 +25,28 @@
 
 #pragma once
 
+#ifdef PERIPHERALMAN
+#include <pio/peripheral_manager_client.h>
+#else
+#include "iio.h"
+#endif
+
 #include "common.h"
 #include "mraa.h"
 #include "mraa_adv_func.h"
-#include "iio.h"
 
 // Bionic does not implement pthread cancellation API
 #ifndef __BIONIC__
 #define HAVE_PTHREAD_CANCEL
 #endif
+
+// Max count for various busses
+#define MAX_I2C_BUS_COUNT 12
+#define MAX_SPI_BUS_COUNT 12
+#define MAX_AIO_COUNT 7
+#define MAX_UART_COUNT 6
+#define MAX_PWM_COUNT 6
+
 
 // general status failures for internal functions
 #define MRAA_PLATFORM_NO_INIT -3
@@ -66,9 +79,11 @@
 #define MISO_KEY "miso"
 #define MOSI_KEY "mosi"
 #define CS_KEY "chipselect"
+#define SS_KEY "slaveselect"
 #define PIN_KEY "pin"
 #define IO_KEY "layout"
 #define PLATFORM_KEY "platform"
+#define BUS_KEY "bus"
 
 // IO keys
 #define GPIO_KEY "GPIO"
@@ -116,6 +131,9 @@ struct _gpio {
     int mock_state; /**< mock state of the pin */
 #endif
     /*@}*/
+#ifdef PERIPHERALMAN
+    AGpio *bgpio;
+#endif
 };
 
 /**
@@ -135,6 +153,10 @@ struct _i2c {
     uint8_t* mock_dev_data; /**< mock device data register block contents */
 #endif
     /*@}*/
+#ifdef PERIPHERALMAN
+    AI2cDevice *bi2c;
+    char bus_name[256];
+#endif
 };
 
 /**
@@ -149,6 +171,9 @@ struct _spi {
     unsigned int bpw;   /**< Bits per word */
     mraa_adv_func_t* advance_func; /**< override function table */
     /*@}*/
+#ifdef PERIPHERALMAN
+    ASpiDevice *bspi;
+#endif
 };
 
 /**
@@ -163,6 +188,9 @@ struct _pwm {
     mraa_boolean_t owner; /**< Owner of pwm context*/
     mraa_adv_func_t* advance_func; /**< override function table */
     /*@}*/
+#ifdef PERIPHERALMAN
+    APwm *bpwm;
+#endif
 };
 
 /**
@@ -187,8 +215,12 @@ struct _uart {
     int fd; /**< file descriptor for device. */
     mraa_adv_func_t* advance_func; /**< override function table */
     /*@}*/
+#if defined(PERIPHERALMAN)
+    struct AUartDevice *buart;
+#endif
 };
 
+#if !defined(PERIPHERALMAN)
 /**
  * A structure representing an IIO device
  */
@@ -207,6 +239,7 @@ struct _iio {
     mraa_iio_event* events;
     int datasize;
 };
+#endif
 
 /**
  * A bitfield representing the capabilities of a pin.
@@ -285,7 +318,11 @@ typedef struct {
  */
 typedef struct {
     /*@{*/
+#if defined(PERIPHERALMAN)
+    char *name; /**< Peripheral manager's pin name */
+#else
     char name[MRAA_PIN_NAME_SIZE]; /**< Pin's real world name */
+#endif
     mraa_pincapabilities_t capabilities; /**< Pin Capabiliites */
     mraa_pin_t gpio; /**< GPIO structure */
     mraa_pin_t pwm;  /**< PWM structure */
@@ -302,6 +339,7 @@ typedef struct {
  */
 typedef struct {
     /*@{*/
+    char *name; /**< i2c bus name */
     int bus_id; /**< ID as exposed in the system */
     int scl; /**< i2c SCL */
     int sda; /**< i2c SDA */
@@ -314,6 +352,7 @@ typedef struct {
  */
 typedef struct {
     /*@{*/
+    char *name; /**< spi bus name */
     unsigned int bus_id; /**< The Bus ID as exposed to the system. */
     unsigned int slave_s; /**< Slave select */
     mraa_boolean_t three_wire; /**< Is the bus only a three wire system */
@@ -329,6 +368,7 @@ typedef struct {
  */
 typedef struct {
     /*@{*/
+    char *name; /**< uart name */
     unsigned int index; /**< ID as exposed in the system */
     int rx; /**< uart rx */
     int tx; /**< uart tx */
@@ -337,26 +377,51 @@ typedef struct {
 } mraa_uart_dev_t;
 
 /**
+ * A Structure representing a pwm device.
+ */
+typedef struct {
+    /*@{*/
+    char *name; /**< pwm device name */
+    unsigned int index; /**< ID as exposed in the system */
+    char* device_path; /**< To store "/dev/pwm" for example */
+    /*@}*/
+} mraa_pwm_dev_t;
+
+/**
+* A structure representing an aio device.
+*/
+typedef struct {
+    /*@{*/
+    unsigned int pin; /**< Pin as exposed in the system */
+    /*@}*/
+} mraa_aio_dev_t;
+
+/**
  * A Structure representing a platform/board.
  */
-
 typedef struct _board_t {
     /*@{*/
     int phy_pin_count; /**< The Total IO pins on board */
     int gpio_count; /**< GPIO Count */
     int aio_count;  /**< Analog side Count */
     int i2c_bus_count; /**< Usable i2c Count */
-    mraa_i2c_bus_t  i2c_bus[12]; /**< Array of i2c */
+    unsigned int aio_non_seq; /**< Are AIO pins non sequential? Usually 0. */
+    mraa_i2c_bus_t  i2c_bus[MAX_I2C_BUS_COUNT]; /**< Array of i2c */
     unsigned int def_i2c_bus; /**< Position in array of default i2c bus */
     int spi_bus_count; /**< Usable spi Count */
-    mraa_spi_bus_t spi_bus[12];       /**< Array of spi */
+    mraa_spi_bus_t spi_bus[MAX_SPI_BUS_COUNT];       /**< Array of spi */
     unsigned int def_spi_bus; /**< Position in array of defult spi bus */
     unsigned int adc_raw; /**< ADC raw bit value */
     unsigned int adc_supported; /**< ADC supported bit value */
-    unsigned int def_uart_dev; /**< Position in array of defult uart */
-    int uart_dev_count; /**< Usable spi Count */
-    mraa_uart_dev_t uart_dev[6]; /**< Array of UARTs */
+    unsigned int def_uart_dev; /**< Position in array of default uart */
+    unsigned int def_aio_dev; /**< Position in array of default aio */
+    unsigned int def_pwm_dev; /**< Position in array of default pwm */
+    int uart_dev_count; /**< Usable uart Count */
+    mraa_uart_dev_t uart_dev[MAX_UART_COUNT]; /**< Array of UARTs */
+    mraa_aio_dev_t aio_dev[MAX_AIO_COUNT]; /**<Array of AIOs */
     mraa_boolean_t no_bus_mux; /**< i2c/spi/adc/pwm/uart bus muxing setup not required */
+    int pwm_dev_count; /**< Usable pwm Count */
+    mraa_pwm_dev_t pwm_dev[MAX_PWM_COUNT]; /**< Array of PWMs */
     int pwm_default_period; /**< The default PWM period is US */
     int pwm_max_period; /**< Maximum period in us */
     int pwm_min_period; /**< Minimum period in us */
@@ -369,7 +434,9 @@ typedef struct _board_t {
     /*@}*/
 } mraa_board_t;
 
+#if !defined(PERIPHERALMAN)
 typedef struct {
     struct _iio* iio_devices; /**< Pointer to IIO devices */
     uint8_t iio_device_count; /**< IIO device count */
 } mraa_iio_info_t;
+#endif

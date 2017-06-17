@@ -355,7 +355,7 @@ mraa_iio_trigger_buffer(mraa_iio_context dev, void (*fptr)(char* data), void* ar
         return MRAA_ERROR_NO_RESOURCES;
     }
 
-    sprintf(bu, IIO_SLASH_DEV "%d", dev->num);
+    snprintf(bu, MAX_SIZE, IIO_SLASH_DEV "%d", dev->num);
     dev->fp = open(bu, O_RDONLY | O_NONBLOCK);
     if (dev->fp == -1) {
         return MRAA_ERROR_INVALID_RESOURCE;
@@ -465,7 +465,7 @@ mraa_iio_event_poll(mraa_iio_context dev, struct iio_event_data* data)
     if (ret == -1 || event_fd == -1)
         return MRAA_ERROR_UNSPECIFIED;
 
-    ret = read(event_fd, data, sizeof(struct iio_event_data));
+    read(event_fd, data, sizeof(struct iio_event_data));
 
     close(event_fd);
     return MRAA_SUCCESS;
@@ -505,7 +505,7 @@ mraa_iio_event_setup_callback(mraa_iio_context dev, void (*fptr)(struct iio_even
         return MRAA_ERROR_NO_RESOURCES;
     }
 
-    sprintf(bu, IIO_SLASH_DEV "%d", dev->num);
+    snprintf(bu, MAX_SIZE, IIO_SLASH_DEV "%d", dev->num);
     dev->fp = open(bu, O_RDONLY | O_NONBLOCK);
     if (dev->fp == -1) {
         return MRAA_ERROR_INVALID_RESOURCE;

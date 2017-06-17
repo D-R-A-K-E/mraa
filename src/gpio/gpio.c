@@ -44,7 +44,7 @@ static mraa_result_t
 mraa_gpio_get_valfp(mraa_gpio_context dev)
 {
     char bu[MAX_SIZE];
-    sprintf(bu, SYSFS_CLASS_GPIO "/gpio%d/value", dev->pin);
+    snprintf(bu, MAX_SIZE, SYSFS_CLASS_GPIO "/gpio%d/value", dev->pin);
     dev->value_fp = open(bu, O_RDWR);
     if (dev->value_fp == -1) {
         syslog(LOG_ERR, "gpio%i: Failed to open 'value': %s", dev->pin, strerror(errno));
@@ -238,6 +238,11 @@ mraa_gpio_wait_interrupt(int fd
 static void*
 mraa_gpio_interrupt_handler(void* arg)
 {
+    if (arg == NULL) {
+        syslog(LOG_ERR, "gpio: interrupt_handler: context is invalid");
+        return NULL;
+    }
+
     mraa_gpio_context dev = (mraa_gpio_context) arg;
     int fp = -1;
     mraa_result_t ret;
@@ -248,7 +253,7 @@ mraa_gpio_interrupt_handler(void* arg)
     } else {
         // open gpio value with open(3)
         char bu[MAX_SIZE];
-        sprintf(bu, SYSFS_CLASS_GPIO "/gpio%d/value", dev->pin);
+        snprintf(bu, MAX_SIZE, SYSFS_CLASS_GPIO "/gpio%d/value", dev->pin);
         fp = open(bu, O_RDONLY);
         if (fp < 0) {
             syslog(LOG_ERR, "gpio%i: interrupt_handler: failed to open 'value' : %s", dev->pin, strerror(errno));

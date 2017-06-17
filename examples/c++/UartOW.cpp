@@ -27,8 +27,6 @@
 //! [Interesting]
 #include "uart_ow.hpp"
 
-using namespace std;
-
 int
 main(int argc, char** argv)
 {
@@ -38,28 +36,30 @@ main(int argc, char** argv)
     mraa::Result rv;
 
     if ((rv = uart->reset()) == mraa::SUCCESS) {
-        cout << "Reset succeeded, device(s) detected!" << endl;
+        std::cout << "Reset succeeded, device(s) detected!" << std::endl;
     } else {
-        cout << "Reset failed, returned " << int(rv) << ". No devices on bus?" << endl;
+        std::cout << "Reset failed, returned " << int(rv) << ". No devices on bus?" << std::endl;
+        delete uart;
         return 1;
     }
 
-    cout << "Looking for devices..." << endl;
+    std::cout << "Looking for devices..." << std::endl;
     ;
 
     uint8_t count = 0;
     // start the search from scratch
-    string id = uart->search(true);
+    std::string id = uart->search(true);
 
     if (id.empty()) {
-        cout << "No devices detected." << endl;
+        std::cout << "No devices detected." << std::endl;
+        delete uart;
         return 1;
     }
 
     while (!id.empty()) {
         // hack so we don't need to cast each element of the romcode
         // for printf purposes
-        uint8_t* ptr = (uint8_t*) id.c_str();
+        uint8_t* ptr = (uint8_t*) id.data();
 
         // The first byte (0) is the device type (family) code.
         // The last byte (7) is the rom code CRC value.  The
@@ -73,7 +73,7 @@ main(int argc, char** argv)
         id = uart->search(false);
     }
 
-    cout << "Exiting..." << endl;
+    std::cout << "Exiting..." << std::endl;
 
     delete uart;
 

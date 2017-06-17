@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include <sys/mman.h>
 #include <mraa/common.h>
 
@@ -39,6 +40,7 @@
 #define PLATFORM_NAME_RASPBERRY_PI_A_PLUS_REV_1 "Raspberry Pi Model A+ Rev 1"
 #define PLATFORM_NAME_RASPBERRY_PI2_B_REV_1 "Raspberry Pi 2 Model B Rev 1"
 #define PLATFORM_NAME_RASPBERRY_PI_ZERO "Raspberry Pi Zero"
+#define PLATFORM_NAME_RASPBERRY_PI3_B "Raspberry Pi 3 Model B"
 #define PLATFORM_RASPBERRY_PI_B_REV_1 1
 #define PLATFORM_RASPBERRY_PI_A_REV_2 2
 #define PLATFORM_RASPBERRY_PI_B_REV_2 3
@@ -46,7 +48,8 @@
 #define PLATFORM_RASPBERRY_PI_COMPUTE_MODULE_REV_1 5
 #define PLATFORM_RASPBERRY_PI_A_PLUS_REV_1 6
 #define PLATFORM_RASPBERRY_PI2_B_REV_1 7
-#define PLATFORM_RASPBERRY_PI_ZERO "Raspberry Pi Zero"
+#define PLATFORM_RASPBERRY_PI_ZERO 8
+#define PLATFORM_RASPBERRY_PI3_B 9
 #define MMAP_PATH "/dev/mem"
 #define BCM2835_PERI_BASE 0x20000000
 #define BCM2835_GPIO_BASE (BCM2835_PERI_BASE + 0x200000)
@@ -207,10 +210,20 @@ mraa_raspberry_pi_mmap_setup(mraa_gpio_context dev, mraa_boolean_t en)
     return MRAA_SUCCESS;
 }
 
+mraa_result_t
+mraa_raspberry_pi_spi_frequency_replace(mraa_spi_context dev, int hz)
+{
+    // RPI driver doesn't like being queried for it's max speed
+    dev->clock = hz;
+    return MRAA_SUCCESS;
+}
+
 mraa_board_t*
 mraa_raspberry_pi()
 {
     mraa_board_t* b = (mraa_board_t*) calloc(1, sizeof(mraa_board_t));
+    int pin_base = 0;
+
     if (b == NULL) {
         return NULL;
     }
@@ -219,10 +232,13 @@ mraa_raspberry_pi()
     size_t len = 100;
     char* line = calloc(len, sizeof(char));
 
+    mraa_boolean_t tweakedCpuinfo = 0;
+
     FILE* fh = fopen("/proc/cpuinfo", "r");
     if (fh != NULL) {
         while (getline(&line, &len, fh) != -1) {
             if (strncmp(line, "Revision", 8) == 0) {
+                tweakedCpuinfo = 1;
                 if (strstr(line, "0002") || strstr(line, "0003")) {
                     b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_REV_1;
                     platform_detected = PLATFORM_RASPBERRY_PI_B_REV_1;
@@ -252,10 +268,15 @@ mraa_raspberry_pi()
                     b->platform_name = PLATFORM_NAME_RASPBERRY_PI_A_PLUS_REV_1;
                     platform_detected = PLATFORM_RASPBERRY_PI_A_PLUS_REV_1;
                     b->phy_pin_count = MRAA_RASPBERRY_PI_AB_PLUS_PINCOUNT;
-                } else if (strstr(line, "a01041") || strstr(line, "a21041") || strstr(line, "a02082")) {
+                } else if (strstr(line, "a01041") || strstr(line, "a21041")) {
                     b->platform_name = PLATFORM_NAME_RASPBERRY_PI2_B_REV_1;
                     platform_detected = PLATFORM_RASPBERRY_PI2_B_REV_1;
                     b->phy_pin_count = MRAA_RASPBERRY_PI2_B_REV_1_PINCOUNT;
+                } else if (strstr(line, "a02082") || strstr(line, "a020a0") ||
+                           strstr(line, "a22082") || strstr(line, "a32082")) {
+                    b->platform_name = PLATFORM_NAME_RASPBERRY_PI3_B;
+                    platform_detected = PLATFORM_RASPBERRY_PI3_B;
+                    b->phy_pin_count = MRAA_RASPBERRY_PI3_B_PINCOUNT;
                 } else {
                     b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_REV_1;
                     platform_detected = PLATFORM_RASPBERRY_PI_B_REV_1;
@@ -266,6 +287,56 @@ mraa_raspberry_pi()
         fclose(fh);
     }
     free(line);
+
+    // Some distros have a Revision line in /proc/cpuinfo for rpi.
+    // As this may not be the case for all distros, we need to find
+    // another way to guess the raspberry pi model.
+    if (!tweakedCpuinfo) {
+        // See Documentation/devicetree/bindings/arm/bcm/brcm,bcm2835.txt
+        // for the values
+        const char *compatible_path = "/proc/device-tree/compatible";
+        if (mraa_file_contains(compatible_path, "raspberrypi,model-b")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI_B_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_B_REV_1_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-b-rev2")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_REV_2;
+            platform_detected = PLATFORM_RASPBERRY_PI_B_REV_2;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_AB_REV_2_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-zero")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_ZERO;
+            platform_detected = PLATFORM_RASPBERRY_PI_ZERO;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_ZERO_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-a")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_A_REV_2;
+            platform_detected = PLATFORM_RASPBERRY_PI_A_REV_2;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_AB_REV_2_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-b-plus")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_PLUS_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI_B_PLUS_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_AB_PLUS_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,compute-module")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_COMPUTE_MODULE_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI_COMPUTE_MODULE_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_COMPUTE_MODULE_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-a-plus")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_A_PLUS_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI_A_PLUS_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_AB_PLUS_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,2-model-b")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI2_B_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI2_B_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI2_B_REV_1_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,model-b")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI_B_REV_1;
+            platform_detected = PLATFORM_RASPBERRY_PI_B_REV_1;
+            b->phy_pin_count = MRAA_RASPBERRY_PI_B_REV_1_PINCOUNT;
+        } else if (mraa_file_contains(compatible_path, "raspberrypi,3-model-b")) {
+            b->platform_name = PLATFORM_NAME_RASPBERRY_PI3_B;
+            platform_detected = PLATFORM_RASPBERRY_PI3_B;
+            b->phy_pin_count = MRAA_RASPBERRY_PI3_B_PINCOUNT;
+        }
+    }
 
     b->aio_count = 0;
     b->adc_raw = 0;
@@ -293,9 +364,35 @@ mraa_raspberry_pi()
         return NULL;
     }
 
+    // Detect the base of the gpiochip, raspbian hardcodes it to 0 in the kernel
+    // while upstream kernel does not.
+    DIR* gpio_dir = opendir("/sys/class/gpio");
+    if (gpio_dir == NULL) {
+        free(b->adv_func);
+        free(b);
+        return NULL;
+    }
+
+    struct dirent* child;
+    while ((child = readdir(gpio_dir)) != NULL) {
+        if (strstr(child->d_name, "gpiochip")) {
+            char chip_path[MAX_SIZE];
+            sprintf(chip_path, "/sys/class/gpio/%s/label", child->d_name);
+            if (mraa_file_contains(chip_path, "bcm2835")) {
+                if (mraa_atoi(child->d_name + 8, &pin_base) != MRAA_SUCCESS) {
+                    free(b->adv_func);
+                    free(b);
+                    return NULL;
+                }
+                break;
+            }
+        }
+    }
+
     b->adv_func->spi_init_pre = &mraa_raspberry_pi_spi_init_pre;
     b->adv_func->i2c_init_pre = &mraa_raspberry_pi_i2c_init_pre;
     b->adv_func->gpio_mmap_setup = &mraa_raspberry_pi_mmap_setup;
+    b->adv_func->spi_frequency_replace = &mraa_raspberry_pi_spi_frequency_replace;
 
     strncpy(b->pins[0].name, "INVALID", MRAA_PIN_NAME_SIZE);
     b->pins[0].capabilities = (mraa_pincapabilities_t){ 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -308,7 +405,7 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[3].name, "SDA0", MRAA_PIN_NAME_SIZE);
     b->pins[3].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 1, 0, 0 };
-    b->pins[3].gpio.pinmap = 2;
+    b->pins[3].gpio.pinmap = pin_base + 2;
     b->pins[3].gpio.mux_total = 0;
     b->pins[3].i2c.pinmap = 0;
     b->pins[3].i2c.mux_total = 0;
@@ -318,7 +415,7 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[5].name, "SCL0", MRAA_PIN_NAME_SIZE);
     b->pins[5].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 1, 0, 0 };
-    b->pins[5].gpio.pinmap = 3;
+    b->pins[5].gpio.pinmap = pin_base + 3;
     b->pins[5].gpio.mux_total = 0;
     b->pins[5].i2c.pinmap = 0;
     b->pins[5].i2c.mux_total = 0;
@@ -328,12 +425,12 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[7].name, "GPIO4", MRAA_PIN_NAME_SIZE);
     b->pins[7].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[7].gpio.pinmap = 4;
+    b->pins[7].gpio.pinmap = pin_base + 4;
     b->pins[7].gpio.mux_total = 0;
 
     strncpy(b->pins[8].name, "UART_TX", MRAA_PIN_NAME_SIZE);
     b->pins[8].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 1 };
-    b->pins[8].gpio.pinmap = 14;
+    b->pins[8].gpio.pinmap = pin_base + 14;
     b->pins[8].gpio.mux_total = 0;
     b->pins[8].uart.parent_id = 0;
     b->pins[8].uart.mux_total = 0;
@@ -343,27 +440,27 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[10].name, "UART_RX", MRAA_PIN_NAME_SIZE);
     b->pins[10].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 1 };
-    b->pins[10].gpio.pinmap = 15;
+    b->pins[10].gpio.pinmap = pin_base + 15;
     b->pins[10].gpio.mux_total = 0;
     b->pins[10].uart.parent_id = 0;
     b->pins[10].uart.mux_total = 0;
 
     strncpy(b->pins[11].name, "GPIO17", MRAA_PIN_NAME_SIZE);
     b->pins[11].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[11].gpio.pinmap = 17;
+    b->pins[11].gpio.pinmap = pin_base + 17;
     b->pins[11].gpio.mux_total = 0;
 
     strncpy(b->pins[12].name, "GPIO18", MRAA_PIN_NAME_SIZE);
     b->pins[12].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[12].gpio.pinmap = 18;
+    b->pins[12].gpio.pinmap = pin_base + 18;
     b->pins[12].gpio.mux_total = 0;
 
     if (platform_detected == PLATFORM_RASPBERRY_PI_B_REV_1) {
         strncpy(b->pins[13].name, "GPIO21", MRAA_PIN_NAME_SIZE);
-        b->pins[13].gpio.pinmap = 21;
+        b->pins[13].gpio.pinmap = pin_base + 21;
     } else {
         strncpy(b->pins[13].name, "GPIO27", MRAA_PIN_NAME_SIZE);
-        b->pins[13].gpio.pinmap = 27;
+        b->pins[13].gpio.pinmap = pin_base + 27;
     }
     b->pins[13].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
     b->pins[13].gpio.mux_total = 0;
@@ -373,12 +470,12 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[15].name, "GPIO22", MRAA_PIN_NAME_SIZE);
     b->pins[15].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[15].gpio.pinmap = 22;
+    b->pins[15].gpio.pinmap = pin_base + 22;
     b->pins[15].gpio.mux_total = 0;
 
     strncpy(b->pins[16].name, "GPIO23", MRAA_PIN_NAME_SIZE);
     b->pins[16].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[16].gpio.pinmap = 23;
+    b->pins[16].gpio.pinmap = pin_base + 23;
     b->pins[16].gpio.mux_total = 0;
 
     strncpy(b->pins[17].name, "3V3", MRAA_PIN_NAME_SIZE);
@@ -386,12 +483,12 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[18].name, "GPIO24", MRAA_PIN_NAME_SIZE);
     b->pins[18].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[18].gpio.pinmap = 24;
+    b->pins[18].gpio.pinmap = pin_base + 24;
     b->pins[18].gpio.mux_total = 0;
 
     strncpy(b->pins[19].name, "SPI_MOSI", MRAA_PIN_NAME_SIZE);
     b->pins[19].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 1, 0, 0, 0 };
-    b->pins[19].gpio.pinmap = 10;
+    b->pins[19].gpio.pinmap = pin_base + 10;
     b->pins[19].gpio.mux_total = 0;
     b->pins[19].spi.pinmap = 0;
     b->pins[19].spi.mux_total = 0;
@@ -401,26 +498,26 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[21].name, "SPI_MISO", MRAA_PIN_NAME_SIZE);
     b->pins[21].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 1, 0, 0, 0 };
-    b->pins[21].gpio.pinmap = 9;
+    b->pins[21].gpio.pinmap = pin_base + 9;
     b->pins[21].gpio.mux_total = 0;
     b->pins[21].spi.pinmap = 0;
     b->pins[21].spi.mux_total = 0;
 
     strncpy(b->pins[22].name, "GPIO25", MRAA_PIN_NAME_SIZE);
     b->pins[22].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-    b->pins[22].gpio.pinmap = 25;
+    b->pins[22].gpio.pinmap = pin_base + 25;
     b->pins[22].gpio.mux_total = 0;
 
     strncpy(b->pins[23].name, "SPI_CLK", MRAA_PIN_NAME_SIZE);
     b->pins[23].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 1, 0, 0, 0 };
-    b->pins[23].gpio.pinmap = 11;
+    b->pins[23].gpio.pinmap = pin_base + 11;
     b->pins[23].gpio.mux_total = 0;
     b->pins[23].spi.pinmap = 0;
     b->pins[23].spi.mux_total = 0;
 
     strncpy(b->pins[24].name, "SPI_CS0", MRAA_PIN_NAME_SIZE);
     b->pins[24].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 1, 0, 0, 0 };
-    b->pins[24].gpio.pinmap = 8;
+    b->pins[24].gpio.pinmap = pin_base + 8;
     b->pins[24].gpio.mux_total = 0;
     b->pins[24].spi.pinmap = 0;
     b->pins[24].spi.mux_total = 0;
@@ -430,7 +527,7 @@ mraa_raspberry_pi()
 
     strncpy(b->pins[26].name, "SPI_CS1", MRAA_PIN_NAME_SIZE);
     b->pins[26].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 1, 0, 0, 0 };
-    b->pins[26].gpio.pinmap = 7;
+    b->pins[26].gpio.pinmap = pin_base + 7;
     b->pins[26].gpio.mux_total = 0;
     b->pins[26].spi.pinmap = 0;
     b->pins[26].spi.mux_total = 0;
@@ -445,21 +542,21 @@ mraa_raspberry_pi()
 
         strncpy(b->pins[29].name, "GPIO8", MRAA_PIN_NAME_SIZE);
         b->pins[29].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[29].gpio.pinmap = 8;
+        b->pins[29].gpio.pinmap = pin_base + 8;
         b->pins[29].gpio.mux_total = 0;
 
         strncpy(b->pins[30].name, "GPIO9", MRAA_PIN_NAME_SIZE);
         b->pins[30].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[30].gpio.pinmap = 9;
+        b->pins[30].gpio.pinmap = pin_base + 9;
         b->pins[30].gpio.mux_total = 0;
 
         strncpy(b->pins[31].name, "GPIO10", MRAA_PIN_NAME_SIZE);
         b->pins[31].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[31].gpio.pinmap = 10;
+        b->pins[31].gpio.pinmap = pin_base + 10;
         b->pins[31].gpio.mux_total = 0;
 
         strncpy(b->pins[32].name, "GPIO11", MRAA_PIN_NAME_SIZE);
-        b->pins[32].gpio.pinmap = 11;
+        b->pins[32].gpio.pinmap = pin_base + 11;
         b->pins[32].gpio.mux_total = 0;
         b->pins[32].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
 
@@ -497,6 +594,7 @@ mraa_raspberry_pi()
     if ((platform_detected == PLATFORM_RASPBERRY_PI_A_PLUS_REV_1) ||
         (platform_detected == PLATFORM_RASPBERRY_PI_B_PLUS_REV_1) ||
         (platform_detected == PLATFORM_RASPBERRY_PI2_B_REV_1) ||
+        (platform_detected == PLATFORM_RASPBERRY_PI3_B) ||
         (platform_detected == PLATFORM_RASPBERRY_PI_ZERO)) {
 
         strncpy(b->pins[27].name, "ID_SD", MRAA_PIN_NAME_SIZE);
@@ -507,7 +605,7 @@ mraa_raspberry_pi()
 
         strncpy(b->pins[29].name, "GPIO05", MRAA_PIN_NAME_SIZE);
         b->pins[29].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[29].gpio.pinmap = 5;
+        b->pins[29].gpio.pinmap = pin_base + 5;
         b->pins[29].gpio.mux_total = 0;
 
         strncpy(b->pins[30].name, "GND", MRAA_PIN_NAME_SIZE);
@@ -515,17 +613,17 @@ mraa_raspberry_pi()
 
         strncpy(b->pins[31].name, "GPIO06", MRAA_PIN_NAME_SIZE);
         b->pins[31].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[31].gpio.pinmap = 6;
+        b->pins[31].gpio.pinmap = pin_base + 6;
         b->pins[31].gpio.mux_total = 0;
 
         strncpy(b->pins[32].name, "GPIO12", MRAA_PIN_NAME_SIZE);
         b->pins[32].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[32].gpio.pinmap = 12;
+        b->pins[32].gpio.pinmap = pin_base + 12;
         b->pins[32].gpio.mux_total = 0;
 
         strncpy(b->pins[33].name, "GPIO13", MRAA_PIN_NAME_SIZE);
         b->pins[33].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[33].gpio.pinmap = 13;
+        b->pins[33].gpio.pinmap = pin_base + 13;
         b->pins[33].gpio.mux_total = 0;
 
         strncpy(b->pins[34].name, "GND", MRAA_PIN_NAME_SIZE);
@@ -533,22 +631,22 @@ mraa_raspberry_pi()
 
         strncpy(b->pins[35].name, "GPIO19", MRAA_PIN_NAME_SIZE);
         b->pins[35].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[35].gpio.pinmap = 19;
+        b->pins[35].gpio.pinmap = pin_base + 19;
         b->pins[35].gpio.mux_total = 0;
 
         strncpy(b->pins[36].name, "GPIO16", MRAA_PIN_NAME_SIZE);
         b->pins[36].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[36].gpio.pinmap = 16;
+        b->pins[36].gpio.pinmap = pin_base + 16;
         b->pins[36].gpio.mux_total = 0;
 
         strncpy(b->pins[37].name, "GPIO26", MRAA_PIN_NAME_SIZE);
         b->pins[37].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[37].gpio.pinmap = 26;
+        b->pins[37].gpio.pinmap = pin_base + 26;
         b->pins[37].gpio.mux_total = 0;
 
         strncpy(b->pins[38].name, "GPIO20", MRAA_PIN_NAME_SIZE);
         b->pins[38].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[38].gpio.pinmap = 20;
+        b->pins[38].gpio.pinmap = pin_base + 20;
         b->pins[38].gpio.mux_total = 0;
 
         strncpy(b->pins[39].name, "GND", MRAA_PIN_NAME_SIZE);
@@ -556,7 +654,7 @@ mraa_raspberry_pi()
 
         strncpy(b->pins[40].name, "GPIO21", MRAA_PIN_NAME_SIZE);
         b->pins[40].capabilities = (mraa_pincapabilities_t){ 1, 1, 0, 0, 0, 0, 0, 0 };
-        b->pins[40].gpio.pinmap = 21;
+        b->pins[40].gpio.pinmap = pin_base + 21;
         b->pins[40].gpio.mux_total = 0;
     }
 

@@ -1,8 +1,9 @@
 <p align="center">
   <img src="http://iotdk.intel.com/misc/logos/mraa.png" height="150px" width="auto" algt="Mraa Logo"/>
 </p>
+
 libmraa - Low Level Skeleton Library for Communication on GNU/Linux platforms
-==============
+=============================================================================
 
 Libmraa is a C/C++ library with bindings to Java, Python and JavaScript to
 interface with the IO on Galileo, Edison & other platforms, with a structured
@@ -26,20 +27,27 @@ X86
 * [Galileo Gen 2 - Rev H](../master/docs/galileorevh.md)
 * [Edison](../master/docs/edison.md)
 * [Intel DE3815](../master/docs/intel_de3815.md)
-* [Minnowboard Max](../master/docs/minnow_max.md)
+* [Minnowboard](../master/docs/minnow_max.md)
 * [NUC 5th generation](../master/docs/intel_nuc5.md)
 * [UP](../master/docs/up.md)
-* [Intel Joule](../master/docs/grossetete.md)
+* [Intel Joule](../master/docs/joule.md)
 
 ARM
 ---
 * [Raspberry Pi](../master/docs/raspberry_pi.md)
-* [Bannana Pi](../master/docs/banana_pi.md)
+* [Banana Pi](../master/docs/banana_pi.md)
 * [Beaglebone Black](../master/docs/beaglebone.md)
+* [phyBOARD-Wega](../master/docs/phyboard-wega.md)
+* [96Boards](../master/docs/96boards.md)
+
+FPGA
+----
+* [DE10-Nano](../master/docs/de_nano_soc.md)
 
 USB
 ---
 * [FT4222](../master/docs/ftdi_ft4222.md)
+* [Firmata](../master/docs/firmata.md)
 
 Mock
 ----
@@ -60,18 +68,33 @@ https://launchpad.net/~mraa/+archive/ubuntu/mraa
 
 ```bash
 sudo add-apt-repository ppa:mraa/mraa
-sudo apt-get install libmraa1 libmraa-dev mraa-gpio mraa-tools python2-mraa python3-mraa
+sudo apt-get update
+sudo apt-get install libmraa1 libmraa-dev mraa-tools python-mraa python3-mraa
 ```
 
-Node.js package is available seperately.
+Node.js package is available separately.
 
 Install on Arch Linux
 ---------------------
 
 There is an AUR package for mraa here: https://aur.archlinux.org/packages/mraa
 
+Install on openSUSE
+-------------------
+
+```bash
+REPO="openSUSE_Tumbleweed"
+if test "$(arch)" == "aarch64"; then
+  REPO="openSUSE_Factory_ARM"
+fi
+sudo zypper ar http://download.opensuse.org/repositories/hardware/$REPO/hardware.repo
+sudo zypper in mraa
+```
+
 Installing for Node.js only
 ---------------------------
+
+> Note: Node.js 7.0.0+ is not supported. You'll have to downgrade to 6.x.x.
 
 You can also install just the node.js mraa module by using npm. You will need a
 C++ compiler and the node development headers, however it's not required to
@@ -85,6 +108,9 @@ Note that installing mraa in this way builds mraa without json-c so you cannot
 use mraa_init_json_platform(). Also building this way means the mraa.node
 includes a static version of libmraa rather than relying on a dynamic library
 in /usr/lib.
+
+Subplatforms (i.e. Firmata) have to be added manually with this kind of install
+from your application, as shown in [this example](examples/javascript/firmata.js).
 
 Installing on Intel 32bit Yocto based opkg image
 ------------------------------------------------

@@ -30,12 +30,9 @@ extern "C" {
 
 #include "mraa_internal.h"
 
-// +1 as pins are "1 indexed"
-// we have 20 useless pins then the 4 LEDS and the 2 LEDs on the module.
-#define MRAA_INTEL_GT_TUCHUCK_PINCOUNT (40*2 + 23 +1 +2)
+mraa_platform_t mraa_peripheralman_platform();
 
-mraa_board_t*
-mraa_gt_tuchuck_board();
+void pman_mraa_deinit();
 
 #ifdef __cplusplus
 }

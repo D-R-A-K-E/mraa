@@ -27,6 +27,8 @@
 #include "common.h"
 #include "types.hpp"
 #include <string>
+#include <sstream>
+#include <stdexcept>
 
 /**
  * @namespace mraa namespace
@@ -177,6 +179,18 @@ getPinCount()
 }
 
 /**
+ * Get platform usable UART count, board must be initialised.
+ *
+ * @return number of usable UARTs on the current platform. Function will
+ * return -1 on failure
+ */
+inline int
+getUartCount()
+{
+    return mraa_get_uart_count();
+}
+
+/**
  * Get platform usable I2C bus count, board must be initialised.
  *
  * @return number f usable I2C bus count on the current platform. Function will
@@ -212,6 +226,111 @@ getPinName(int pin)
 {
     std::string ret_val(mraa_get_pin_name(pin));
     return ret_val;
+}
+
+/**
+* Get GPIO index by pin name, board must be initialised.
+*
+* @param pin_name: GPIO pin name. Eg: IO0
+* @throws std::invalid_argument if name is not found
+* @return int of MRAA index for GPIO
+*/
+inline int
+getGpioLookup(std::string pin_name)
+{
+    int index = mraa_gpio_lookup(pin_name.c_str());
+
+    if (index < 0){
+        std::ostringstream oss;
+        oss << "Gpio name " << pin_name << " is not valid";
+        throw std::invalid_argument(oss.str());
+    }
+
+    return index;
+}
+
+/**
+* Get I2C bus index by bus name, board must be initialised.
+*
+* @param i2c_name: I2C bus name. Eg: I2C6
+* @throws std::invalid_argument if name is not found
+* @return int of MRAA index for I2C bus
+*/
+inline int
+getI2cLookup(std::string i2c_name)
+{
+    int index = mraa_i2c_lookup(i2c_name.c_str());
+
+    if (index < 0){
+        std::ostringstream oss;
+        oss << "i2c name " << i2c_name << " is not valid";
+        throw std::invalid_argument(oss.str());
+    }
+
+    return index;
+}
+
+/**
+* Get SPI bus index by bus name, board must be initialised.
+*
+* @param spi_name: Name of SPI bus. Eg: SPI2
+* @throws std::invalid_argument if name is not found
+* @return int of MRAA index for SPI bus
+*/
+inline int
+getSpiLookup(std::string spi_name)
+{
+    int index = mraa_spi_lookup(spi_name.c_str());
+
+    if (index < 0){
+        std::ostringstream oss;
+        oss << "Spi name " << spi_name << " is not valid";
+        throw std::invalid_argument(oss.str());
+    }
+
+    return index;
+}
+
+/**
+ * Get PWM index by PWM name, board must be initialised.
+ *
+ * @param pwm_name: Name of PWM. Eg:PWM0
+ * @throws std::invalid_argument if name is not found
+ * @return int of MRAA index for PWM
+ */
+inline int
+getPwmLookup(std::string pwm_name)
+{
+    int index = mraa_pwm_lookup(pwm_name.c_str());
+
+    if (index < 0){
+        std::ostringstream oss;
+        oss << "PWM name " << pwm_name << " is not valid";
+        throw std::invalid_argument(oss.str());
+    }
+
+    return index;
+}
+
+/**
+ * Get UART index by UART name, board must be initialised.
+ *
+ * @param pwm_name: Name of the UART. Eg: UART2
+ * @throws std::invalid_argument if name is not found
+ * @return MRAA index for the UART
+ */
+inline int
+getUartLookup(std::string uart_name)
+{
+    int index = mraa_uart_lookup(uart_name.c_str());
+
+    if (index < 0) {
+        std::ostringstream oss;
+        oss << "UART name " << uart_name << " is not valid";
+        throw std::invalid_argument(oss.str());
+    }
+
+    return index;
 }
 
 /**

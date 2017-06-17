@@ -26,9 +26,15 @@ set (mraa_LIB_SRCS_NOAUTO
   ${PROJECT_SOURCE_DIR}/src/spi/spi.c
   ${PROJECT_SOURCE_DIR}/src/aio/aio.c
   ${PROJECT_SOURCE_DIR}/src/uart/uart.c
-  ${PROJECT_SOURCE_DIR}/src/iio/iio.c
   ${mraa_LIB_SRCS_NOAUTO}
 )
+
+if (NOT PERIPHERALMAN)
+  set (mraa_LIB_SRCS_NOAUTO
+    ${mraa_LIB_SRCS_NOAUTO}
+    ${PROJECT_SOURCE_DIR}/src/iio/iio.c
+  )
+endif ()
 
 set (mraa_LIB_X86_SRCS_NOAUTO
   ${PROJECT_SOURCE_DIR}/src/x86/x86.c
@@ -41,7 +47,7 @@ set (mraa_LIB_X86_SRCS_NOAUTO
   ${PROJECT_SOURCE_DIR}/src/x86/intel_sofia_3gr.c
   ${PROJECT_SOURCE_DIR}/src/x86/intel_cherryhills.c
   ${PROJECT_SOURCE_DIR}/src/x86/up.c
-  ${PROJECT_SOURCE_DIR}/src/x86/intel_gt_tuchuck.c
+  ${PROJECT_SOURCE_DIR}/src/x86/intel_joule_expansion.c
 )
 
 message (STATUS "INFO - Adding support for platform ${MRAAPLATFORMFORCE}")
@@ -67,8 +73,8 @@ if (NOT ${MRAAPLATFORMFORCE} STREQUAL "ALL")
     set (mraa_LIB_X86_SRCS_NOAUTO ${PROJECT_SOURCE_DIR}/src/x86/x86.c ${PROJECT_SOURCE_DIR}/src/x86/intel_cherryhills.c)
   elseif (${MRAAPLATFORMFORCE} STREQUAL "MRAA_UP")
     set (mraa_LIB_X86_SRCS_NOAUTO ${PROJECT_SOURCE_DIR}/src/x86/x86.c ${PROJECT_SOURCE_DIR}/src/x86/up.c)
-  elseif( ${MRAAPLATFORMFORCE} STREQUAL "MRAA_INTEL_GT_TUCHUCK")
-    set (mraa_LIB_X86_SRCS_NOAUTO ${PROJECT_SOURCE_DIR}/src/x86/x86.c ${PROJECT_SOURCE_DIR}/src/x86/intel_gt_tuchuck.c)
+  elseif( ${MRAAPLATFORMFORCE} STREQUAL "MRAA_INTEL_JOULE_EXPANSION")
+    set (mraa_LIB_X86_SRCS_NOAUTO ${PROJECT_SOURCE_DIR}/src/x86/x86.c ${PROJECT_SOURCE_DIR}/src/x86/intel_joule_expansion.c)
   else ()
     message (FATAL_ERROR "Unknown x86 platform enabled!")
   endif ()
@@ -81,7 +87,9 @@ set (mraa_LIB_ARM_SRCS_NOAUTO
   ${PROJECT_SOURCE_DIR}/src/arm/96boards.c
   ${PROJECT_SOURCE_DIR}/src/arm/raspberry_pi.c
   ${PROJECT_SOURCE_DIR}/src/arm/beaglebone.c
+  ${PROJECT_SOURCE_DIR}/src/arm/phyboard.c
   ${PROJECT_SOURCE_DIR}/src/arm/banana.c
+  ${PROJECT_SOURCE_DIR}/src/arm/de_nano_soc.c
 )
 
 set (mraa_LIB_MOCK_SRCS_NOAUTO
@@ -91,6 +99,11 @@ set (mraa_LIB_MOCK_SRCS_NOAUTO
   ${PROJECT_SOURCE_DIR}/src/mock/mock_board_aio.c
   ${PROJECT_SOURCE_DIR}/src/mock/mock_board_i2c.c
   ${PROJECT_SOURCE_DIR}/src/mock/mock_board_spi.c
+  ${PROJECT_SOURCE_DIR}/src/mock/mock_board_uart.c
+)
+
+set (mraa_LIB_PERIPHERALMAN_SRCS_NOAUTO
+  ${PROJECT_SOURCE_DIR}/src/peripheralman/peripheralman.c
 )
 
 if (JSONPLAT)
@@ -104,7 +117,6 @@ if (JSONPLAT)
 endif ()
 
 set (mraa_LIBS ${CMAKE_THREAD_LIBS_INIT})
-
 
 if (X86PLAT)
   add_subdirectory(x86)
@@ -122,6 +134,23 @@ if (MOCKPLAT)
   if (MSYS)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMSYS=1")
   endif ()
+endif()
+
+if (PERIPHERALMAN)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPERIPHERALMAN=1")
+
+  # Use the find_package provided by Android Things.  Make sure this is
+  # available in CMAKE_MODULE_PATH.
+  find_package(AndroidThings REQUIRED)
+
+  # Add Android Things libraries
+  set (mraa_LIBS ${mraa_LIBS} ${ANDROIDTHINGS_LIBRARIES})
+
+  # Add Android Things include directories
+  include_directories(${ANDROIDTHINGS_INCLUDE_DIRS})
+
+  # Add the peripheral manager source to the build
+  add_subdirectory(peripheralman)
 endif()
 
 if (USBPLAT)
@@ -240,7 +269,7 @@ if (BUILDSWIG)
       configure_file (${CMAKE_CURRENT_SOURCE_DIR}/java/manifest.txt.in
           ${CMAKE_CURRENT_BINARY_DIR}/java/manifest.txt)
       configure_file (${CMAKE_CURRENT_SOURCE_DIR}/java/pom.xml.in
-          ${CMAKE_CURRENT_BINARY_DIR}/java/pom.xml)
+          ${CMAKE_CURRENT_BINARY_DIR}/java/mraa-${VERSION_SHORT}.pom)
       add_subdirectory (java)
     endif ()
     if (BUILDSWIGNODE)

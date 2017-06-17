@@ -85,7 +85,7 @@ mraa_result_t mraa_init() __attribute__((constructor));
  * people who like super clean code. If dynamically loading & unloading
  * libmraa you need to call this before unloading the library.
  */
-void mraa_deinit();
+void mraa_deinit() __attribute__((destructor));
 
 /**
  * Checks if a pin is able to use the passed in mode.
@@ -202,6 +202,41 @@ int mraa_get_platform_combined_type();
 unsigned int mraa_get_pin_count();
 
 /**
+ * Get the number of usable UARTs, board must be initialised.
+ *
+ * @return number of usable UARTs on the platform, returns -1 on failure.
+ */
+int mraa_get_uart_count(void);
+
+/**
+ * Get the number of usable SPI buses, board must be initialised.
+ *
+ * @return number of usable SPI buses on the platform, returns -1 on failure.
+ */
+int mraa_get_spi_bus_count(void);
+
+/**
+ * Get the number of usable PWM pins, board must be initialised.
+ *
+ * @return number of PWMs on the current platform, -1 on failure.
+ */
+int mraa_get_pwm_count(void);
+
+/**
+ * Get the number of usable GPIOs, board must be initialised.
+ *
+ * @return number of usable external GPIO pins on the board, -1 on failure.
+ */
+int mraa_get_gpio_count(void);
+
+/**
+ * Get the number of usable analog pins, board must be initialised.
+ *
+ * @return number of usable ADC inputs on the platform and -1 on failure.
+ */
+int mraa_get_aio_bus_count(void);
+
+/**
  * Get platform usable I2C bus count, board must be initialised.
  *
  * @return number f usable I2C bus count on the current platform. Function will
@@ -232,6 +267,46 @@ unsigned int mraa_get_platform_pin_count(uint8_t platform_offset);
 * @return char* of pin name
 */
 char* mraa_get_pin_name(int pin);
+
+/**
+* Get GPIO index by pin name, board must be initialised.
+*
+* @param pin_name: GPIO pin name. Eg: IO0
+* @return int of MRAA index for GPIO or -1 if not found.
+*/
+int mraa_gpio_lookup(const char* pin_name);
+
+/**
+* Get I2C bus index by bus name, board must be initialised.
+*
+* @param i2c_name: I2C bus name. Eg: I2C6
+* @return int of MRAA index for I2C bus or -1 if not found.
+*/
+int mraa_i2c_lookup(const char* i2c_name);
+
+/**
+* Get SPI bus index by bus name, board must be initialised.
+*
+* @param spi_name: Name of SPI bus. Eg: SPI2
+* @return int of MRAA index for SPI bus or -1 if not found.
+*/
+int mraa_spi_lookup(const char* spi_name);
+
+/**
+ * Get PWM index by PWM name, board must be initialised.
+ *
+ * @param pwm_name: Name of PWM. Eg:PWM0
+ * @return int of MRAA index for PWM or -1 if not found.
+ */
+int mraa_pwm_lookup(const char* pwm_name);
+
+/**
+ * Get UART index by name, board must be initialised.
+ *
+ * @param uart_name: Name of UART. Eg:UART1
+ * @return int of MRAA index for UART, or -1 if not found.
+ */
+int mraa_uart_lookup(const char* uart_name);
 
 /**
  * Get default i2c bus, board must be initialised.

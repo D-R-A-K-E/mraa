@@ -33,8 +33,10 @@
 #include <sched.h>
 #include <string.h>
 #include <pwd.h>
+#if !defined(PERIPHERALMAN)
 #include <glob.h>
 #include <ftw.h>
+#endif
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -61,17 +63,21 @@
 #include "spi.h"
 #include "uart.h"
 
+#if defined(PERIPHERALMAN)
+#include "peripheralmanager/peripheralman.h"
+#else
 #define IIO_DEVICE_WILDCARD "iio:device*"
 
-
-mraa_board_t* plat = NULL;
 mraa_iio_info_t* plat_iio = NULL;
-mraa_lang_func_t* lang_func = NULL;
-
-char* platform_name = NULL;
 
 static int num_i2c_devices = 0;
 static int num_iio_devices = 0;
+#endif
+
+mraa_board_t* plat = NULL;
+mraa_lang_func_t* lang_func = NULL;
+
+char* platform_name = NULL;
 
 const char*
 mraa_get_version()
@@ -102,7 +108,6 @@ imraa_init()
         return MRAA_SUCCESS;
     }
     char* env_var;
-    mraa_result_t ret;
     mraa_platform_t platform_type = MRAA_NULL_PLATFORM;
     uid_t proc_euid = geteuid();
     struct passwd* proc_user = getpwuid(proc_euid);
@@ -121,7 +126,7 @@ imraa_init()
     env_var = getenv(MRAA_JSONPLAT_ENV_VAR);
     if (env_var != NULL) {
         // We only care about success, the init will write to syslog if things went wrong
-        switch ((ret = mraa_init_json_platform(env_var))) {
+        switch (mraa_init_json_platform(env_var)) {
             case MRAA_SUCCESS:
                 platform_type = plat->platform_type;
                 break;
@@ -141,6 +146,9 @@ imraa_init()
 #elif defined(MOCKPLAT)
         // Use mock platform
         platform_type = mraa_mock_platform();
+#elif defined(PERIPHERALMAN)
+        // Use peripheralmanager
+        platform_type = mraa_peripheralman_platform();
 #else
 #error mraa_ARCH NOTHING
 #endif
@@ -182,6 +190,7 @@ imraa_init()
     mraa_add_from_lockfile(subplatform_lockfile);
 #endif
 
+#if !defined(PERIPHERALMAN)
     // Look for IIO devices
     mraa_iio_detect();
 
@@ -198,6 +207,7 @@ imraa_init()
             strncpy(platform_name, plat->platform_name, length);
         }
     }
+#endif
 
     lang_func = (mraa_lang_func_t*) calloc(1, sizeof(mraa_lang_func_t));
     if (lang_func == NULL) {
@@ -225,15 +235,20 @@ mraa_init()
 void
 mraa_deinit()
 {
-    int i = 0;
     if (plat != NULL) {
         if (plat->pins != NULL) {
             free(plat->pins);
+        }
+        if (plat->adv_func != NULL) {
+            free(plat->adv_func);
         }
         mraa_board_t* sub_plat = plat->sub_platform;
         if (sub_plat != NULL) {
             if (sub_plat->pins != NULL) {
                 free(sub_plat->pins);
+            }
+            if (sub_plat->adv_func != NULL) {
+                free(sub_plat->adv_func);
             }
             free(sub_plat);
         }
@@ -241,7 +256,9 @@ mraa_deinit()
         if (plat->platform_type == MRAA_JSON_PLATFORM) {
             // Free the platform name
             free(plat->platform_name);
+            plat->platform_name = NULL;
 
+            int i = 0;
             // Free the UART device path
             for (i = 0; i < plat->uart_dev_count; i++) {
                 if (plat->uart_dev[i].device_path != NULL) {
@@ -251,11 +268,26 @@ mraa_deinit()
         }
 #endif
         free(plat);
+        plat = NULL;
 
+        if (lang_func != NULL) {
+            free(lang_func);
+            lang_func = NULL;
+        }
+
+        if (platform_name != NULL) {
+            free(platform_name);
+            platform_name = NULL;
+        }
     }
+#if !defined(PERIPHERALMAN)
     if (plat_iio != NULL) {
         free(plat_iio);
+        plat_iio = NULL;
     }
+#else
+    pman_mraa_deinit();
+#endif
     closelog();
 }
 
@@ -274,6 +306,7 @@ mraa_set_priority(const int priority)
     return sched_setscheduler(0, SCHED_RR, &sched_s);
 }
 
+#if !defined(PERIPHERALMAN)
 static int
 mraa_count_iio_devices(const char* path, const struct stat* sb, int flag, struct FTW* ftwb)
 {
@@ -489,6 +522,13 @@ mraa_setup_mux_mapped(mraa_pin_t meta)
 
     return MRAA_SUCCESS;
 }
+#else
+mraa_result_t
+mraa_setup_mux_mapped(mraa_pin_t meta)
+{
+    return MRAA_ERROR_FEATURE_NOT_IMPLEMENTED;
+}
+#endif
 
 void
 mraa_result_print(mraa_result_t result)
@@ -710,6 +750,51 @@ mraa_get_platform_version(int platform_offset)
 }
 
 int
+mraa_get_uart_count(void)
+{
+    if (plat == NULL) {
+        return -1;
+    }
+    return plat->uart_dev_count;
+}
+
+int
+mraa_get_spi_count(void)
+{
+    if (plat == NULL) {
+        return -1;
+    }
+    return plat->spi_bus_count;
+}
+
+int
+mraa_get_pwm_count(void)
+{
+    if (plat == NULL) {
+        return -1;
+    }
+    return plat->pwm_dev_count;
+}
+
+int
+mraa_get_gpio_count(void)
+{
+    if (plat == NULL) {
+        return -1;
+    }
+    return plat->gpio_count;
+}
+
+int
+mraa_get_aio_count(void)
+{
+    if (plat == NULL) {
+        return -1;
+    }
+    return plat->aio_count;
+}
+
+int
 mraa_get_i2c_bus_count()
 {
     if (plat == NULL) {
@@ -758,8 +843,9 @@ mraa_get_platform_pin_count(uint8_t platform_offset)
 char*
 mraa_get_pin_name(int pin)
 {
-    if (plat == NULL)
+    if (plat == NULL) {
         return 0;
+    }
 
     mraa_board_t* current_plat = plat;
     if (mraa_is_sub_platform_id(pin)) {
@@ -771,9 +857,120 @@ mraa_get_pin_name(int pin)
         pin = mraa_get_sub_platform_index(pin);
     }
 
-    if (pin > (current_plat->phy_pin_count - 1) || pin < 0)
+    if (pin > (current_plat->phy_pin_count - 1) || pin < 0) {
         return NULL;
+    }
     return (char*) current_plat->pins[pin].name;
+}
+
+int
+mraa_gpio_lookup(const char* pin_name)
+{
+    int i;
+
+    if (plat == NULL) {
+        return -1;
+    }
+
+    if (pin_name == NULL || strlen(pin_name) == 0) {
+        return -1;
+    }
+
+    for (i = 0; i < plat->gpio_count; i++) {
+         if (plat->pins[i].name != NULL &&
+             strncmp(pin_name, plat->pins[i].name, strlen(plat->pins[i].name) + 1) == 0) {
+             return plat->pins[i].gpio.pinmap;
+         }
+    }
+    return -1;
+}
+
+int
+mraa_i2c_lookup(const char* i2c_name)
+{
+    int i;
+
+    if (plat == NULL) {
+        return -1;
+    }
+
+    if (i2c_name == NULL || strlen(i2c_name) == 0) {
+        return -1;
+    }
+
+    for (i = 0; i < plat->i2c_bus_count; i++) {
+         if (plat->i2c_bus[i].name != NULL &&
+             strncmp(i2c_name, plat->i2c_bus[i].name, strlen(plat->i2c_bus[i].name) + 1) == 0) {
+             return plat->i2c_bus[i].bus_id;
+         }
+    }
+    return -1;
+}
+
+int
+mraa_spi_lookup(const char* spi_name)
+{
+    int i;
+
+    if (plat == NULL) {
+        return -1;
+    }
+
+    if (spi_name == NULL || strlen(spi_name) == 0) {
+        return -1;
+    }
+
+    for (i = 0; i < plat->spi_bus_count; i++) {
+         if (plat->spi_bus[i].name != NULL &&
+             strncmp(spi_name, plat->spi_bus[i].name, strlen(plat->spi_bus[i].name) + 1) == 0) {
+             return plat->spi_bus[i].bus_id;
+         }
+    }
+    return -1;
+}
+
+int
+mraa_pwm_lookup(const char* pwm_name)
+{
+    int i;
+
+    if (plat == NULL) {
+        return -1;
+    }
+
+    if (pwm_name == NULL || strlen(pwm_name) == 0) {
+        return -1;
+    }
+
+    for (i = 0; i < plat->pwm_dev_count; i++) {
+         if (plat->pwm_dev[i].name != NULL &&
+             strncmp(pwm_name, plat->pwm_dev[i].name, strlen(plat->pwm_dev[i].name) + 1) == 0) {
+             return plat->pwm_dev[i].index;
+         }
+    }
+    return -1;
+}
+
+int
+mraa_uart_lookup(const char* uart_name)
+{
+    int i;
+
+    if (plat == NULL) {
+        return -1;
+    }
+
+    if (uart_name == NULL || strlen(uart_name) == 0) {
+        return -1;
+    }
+
+    for (i = 0; i < plat->uart_dev_count; i++) {
+         if (plat->uart_dev[i].name != NULL &&
+             strncmp(uart_name, plat->uart_dev[i].name, strlen(plat->uart_dev[i].name) + 1) == 0) {
+             return plat->uart_dev[i].index;
+         }
+    }
+    return -1;
 }
 
 int
@@ -791,6 +988,7 @@ mraa_get_default_i2c_bus(uint8_t platform_offset)
     }
 }
 
+#if !defined(PERIPHERALMAN)
 
 mraa_boolean_t
 mraa_file_exist(const char* filename)
@@ -813,16 +1011,11 @@ mraa_file_contains(const char* filename, const char* content)
 
     char* file = mraa_file_unglob(filename);
     if (file != NULL) {
-        size_t len = 1024;
-        char* line = calloc(len, sizeof(char));
-        if (line == NULL) {
-            free(file);
-            return 0;
-        }
+        size_t len = 0;
+        char* line = NULL;
         FILE* fh = fopen(file, "r");
         if (fh == NULL) {
             free(file);
-            free(line);
             return 0;
         }
         while ((getline(&line, &len, fh) != -1) && (found == 0)) {
@@ -848,16 +1041,11 @@ mraa_file_contains_both(const char* filename, const char* content, const char* c
 
     char* file = mraa_file_unglob(filename);
     if (file != NULL) {
-        size_t len = 1024;
-        char* line = calloc(len, sizeof(char));
-        if (line == NULL) {
-            free(file);
-            return 0;
-        }
+        size_t len = 0;
+        char* line = NULL;
         FILE* fh = fopen(file, "r");
         if (fh == NULL) {
             free(file);
-            free(line);
             return 0;
         }
         while ((getline(&line, &len, fh) != -1) && (found == 0)) {
@@ -929,18 +1117,70 @@ mraa_count_i2c_files(const char* path, const struct stat* sb, int flag, struct F
 }
 
 int
+mraa_find_i2c_bus_pci(const char* pci_device, const char *pci_id, const char* adapter_name)
+{
+    /**
+     * For example we'd get something like:
+     * pci0000:00/0000:00:16.3/i2c_desiignware.3
+     */
+    char path[1024];
+    snprintf(path, 1024-1, "/sys/devices/pci%s/%s/%s/", pci_device, pci_id, adapter_name);
+    if (mraa_file_exist(path)) {
+        struct dirent **namelist;
+        int n;
+        n = scandir(path, &namelist, NULL, alphasort);
+        if (n < 0) {
+            syslog(LOG_ERR, "Failed to get information on i2c");
+            return -1;
+        }
+        else {
+            while (n--) {
+                char* dup = strdup(namelist[n]->d_name);
+                char* orig_dup = dup;
+                if (dup == NULL) {
+                    syslog(LOG_ERR, "Ran out of memory!");
+                    break;
+                }
+                const char delim = '-';
+                char* token;
+                token = strsep(&dup, &delim);
+                if (token != NULL) {
+                    if (strncmp("i2c", token, 3) == 0) {
+                        token = strsep(&dup, &delim);
+                        if (token != NULL) {
+                            int ret = -1;
+                            if (mraa_atoi(token, &ret) == MRAA_SUCCESS) {
+                                free(orig_dup);
+                                free(namelist[n]);
+                                free(namelist);
+                                syslog(LOG_NOTICE, "Adding i2c bus found on i2c-%d on adapter %s", ret, adapter_name);
+                                return ret;
+                            }
+                            free(orig_dup);
+                            free(namelist[n]);
+                            free(namelist);
+                            return -1;
+                        }
+                    }
+                }
+                free(orig_dup);
+                free(namelist[n]);
+            }
+            free(namelist);
+        }
+    }
+    return -1;
+}
+
+int
 mraa_find_i2c_bus(const char* devname, int startfrom)
 {
     char path[64];
     int fd;
-    int i = startfrom;
-    int ret = -1;
-
     // because feeding mraa_find_i2c_bus result back into the function is
     // useful treat -1 as 0
-    if (startfrom < 0) {
-        startfrom = 0;
-    }
+    int i = (startfrom < 0) ? 0 : startfrom;
+    int ret = -1;
 
     // find how many i2c buses we have if we haven't already
     if (num_i2c_devices == 0) {
@@ -997,6 +1237,8 @@ mraa_find_i2c_bus(const char* devname, int startfrom)
     return ret;
 }
 
+#endif
+
 mraa_boolean_t
 mraa_is_sub_platform_id(int pin_or_bus)
 {
@@ -1018,7 +1260,11 @@ mraa_get_sub_platform_index(int pin_or_bus)
 int
 mraa_get_iio_device_count()
 {
+#if defined(PERIPHERALMAN)
+    return -1;
+#else
     return plat_iio->iio_device_count;
+#endif
 }
 
 mraa_result_t
@@ -1027,13 +1273,21 @@ mraa_add_subplatform(mraa_platform_t subplatformtype, const char* uart_dev)
 #if defined(FIRMATA)
     if (subplatformtype == MRAA_GENERIC_FIRMATA) {
         if (plat->sub_platform != NULL) {
-            return MRAA_ERROR_INVALID_PARAMETER;
+            if (plat->sub_platform->platform_type == subplatformtype) {
+                syslog(LOG_NOTICE, "mraa: Firmata subplatform already present");
+                return MRAA_SUCCESS;
+            }
+            syslog(LOG_NOTICE, "mraa: We don't support multiple firmata subplatforms!");
+            return MRAA_ERROR_FEATURE_NOT_SUPPORTED;
         }
         if (mraa_firmata_platform(plat, uart_dev) == MRAA_GENERIC_FIRMATA) {
             syslog(LOG_NOTICE, "mraa: Added firmata subplatform");
             return MRAA_SUCCESS;
         }
-        syslog(LOG_NOTICE, "mraa: Failed to add firmata subplatform");
+    }
+#else
+    if (subplatformtype == MRAA_GENERIC_FIRMATA) {
+        syslog(LOG_NOTICE, "mraa: Cannot add Firmata platform as support not compiled in");
     }
 #endif
 
@@ -1051,6 +1305,7 @@ mraa_remove_subplatform(mraa_platform_t subplatformtype)
         free(plat->sub_platform->adv_func);
         free(plat->sub_platform->pins);
         free(plat->sub_platform);
+        return MRAA_SUCCESS;
     }
 #endif
     return MRAA_ERROR_INVALID_PARAMETER;
@@ -1061,9 +1316,7 @@ mraa_result_t
 mraa_add_from_lockfile(const char* imraa_lock_file)
 {
     mraa_result_t ret = MRAA_SUCCESS;
-    mraa_platform_t type = plat->platform_type;
     char* buffer = NULL;
-    off_t file_size;
     struct stat st;
     int i = 0;
     uint32_t subplat_num = 0;
@@ -1093,9 +1346,11 @@ mraa_add_from_lockfile(const char* imraa_lock_file)
         for (i = 0; i < subplat_num; i++) {
             struct json_object *ioobj = json_object_array_get_idx(ioarray, i);
             json_object_object_foreach(ioobj, key, val) {
-                if (strcmp(key, "id") == 0) {
-                    id = atoi(json_object_get_string(val));
-                } else if (strcmp(key, "uart") == 0) {
+                if (strncmp(key, "id", strlen("id") + 1) == 0) {
+                    if (mraa_atoi(json_object_get_string(val), &id) != MRAA_SUCCESS) {
+                        id = -1;
+                    }
+                } else if (strncmp(key, "uart", strlen("uart") + 1) == 0) {
                     uartdev = json_object_get_string(val);
                 }
             }
@@ -1109,7 +1364,15 @@ mraa_add_from_lockfile(const char* imraa_lock_file)
                 uartdev = NULL;
             }
         }
-    } else {
+        if (json_object_object_get_ex(jobj_lock, "IO", &ioarray) == true &&
+            json_object_is_type(ioarray, json_type_array)) {
+	    /* assume we have declared IO so we are preinitialised and wipe the
+	     * advance func array
+             */
+            memset(plat->adv_func, 0, sizeof(mraa_adv_func_t));
+        }
+    }
+    else {
         ret = MRAA_ERROR_INVALID_RESOURCE;
     }
     json_object_put(jobj_lock);

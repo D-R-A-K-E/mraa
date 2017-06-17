@@ -106,6 +106,9 @@ You can also enable -Wall for gcc before running cmake by exporting your wanted
 CC flags to the CC env var
   `export CC="gcc -Wall"`
 
+Sometimes it's nice to build a static libary, on Linux systems just set
+   `-DBUILD_SHARED_LIBS=OFF`
+
 ## Dependencies continued
 
 You'll need at least SWIG version 3.0.2 and we recommend 3.0.5 to build the
@@ -180,4 +183,19 @@ build machine.
 
 ~~~~~~~~~~~~~{.sh}
 cmake -DRPM=ON -DCMAKE_INSTALL_PREFIX=/usr ..
+~~~~~~~~~~~~~
+
+## Building for the Android Things Peripheralmanager Client
+
+Requirements:
+* Android [Things Native Library](https://github.com/androidthings/native-libandroidthings)
+* Android NDK >= 14b
+
+The [Things Native Library](https://github.com/androidthings/native-libandroidthings) contains a CMake find_package module
+[FindAndroidThings.cmake](https://github.com/androidthings/native-libandroidthings/blob/master/FindAndroidThings.cmake). Make sure the directory containing this module is
+added to the CMAKE_MODULE_PATH.
+
+#### NDK r14b
+~~~~~~~~~~~~~{.sh}
+cmake -DBUILDSWIG=OFF -DBUILDARCH=PERIPHERALMAN -DANDROID_TOOLCHAIN_NAME=x86-i686 -DCMAKE_TOOLCHAIN_FILE=/path/to/android-ndk-r14b/build/cmake/android.toolchain.cmake -DCMAKE_MODULE_PATH=/path/to/native-libandroidthings ..
 ~~~~~~~~~~~~~
